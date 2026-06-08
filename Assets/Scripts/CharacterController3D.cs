@@ -11,7 +11,6 @@ public class CharacterController3D : MonoBehaviour
     [Header("Caméras Enfants")]
     public Camera fpCamera;
     public TPSCameraOrbit tpCameraScript;
-    private bool isFirstPersonMode = true;
 
     [Header("Inputs (Nouveau Système)")]
     public InputActionReference moveAction;
@@ -32,6 +31,12 @@ public class CharacterController3D : MonoBehaviour
     public float jumpHeight = 2.0f;
     private bool canDoubleJump;
     public bool hasDoubleJumpAbility = true;
+
+    [Header("Grappin")]
+    [HideInInspector] public bool isGrappling = false;
+    [HideInInspector] public Vector3 grappleTarget;
+    private float grappleSpeed;
+    [HideInInspector] public bool isFirstPersonMode = true;
 
     private bool _isCurrentPlayer = false;
     public bool isCurrentPlayer
@@ -71,6 +76,15 @@ public class CharacterController3D : MonoBehaviour
             ActivateCurrentMode();
         }
 
+        // Si on est tiré par le grappin, on court-circuite le mouvement normal !
+        if (isGrappling)
+        {
+            HandleRotations(); // On peut toujours regarder autour
+            Vector3 pullDirection = (grappleTarget - transform.position).normalized;
+            controller.Move(pullDirection * grappleSpeed * Time.deltaTime);
+            return;
+        }
+
         HandleRotations();
         HandleMovement();
         HandleJump();
@@ -97,6 +111,8 @@ public class CharacterController3D : MonoBehaviour
         if (fpCamera != null) fpCamera.gameObject.SetActive(false);
         if (tpCameraScript != null) { tpCameraScript.isActive = false; tpCameraScript.gameObject.SetActive(false); }
     }
+
+
 
     void HandleRotations()
     {
@@ -181,5 +197,19 @@ public class CharacterController3D : MonoBehaviour
             controller.Move(playerVelocity * Time.deltaTime);
         }
         else playerVelocity.y = 0f;
+    }
+    public void StartGrapplePull(Vector3 target, float speed)
+    {
+        isGrappling = true;
+        grappleTarget = target;
+        grappleSpeed = speed;
+        playerVelocity.y = 0f; // On annule la gravité
+    }
+
+    public void StopGrapple()
+    {
+        isGrappling = false;
+        // Petit saut vertical à l'arrivée pour bien atterrir sur le rebord
+        playerVelocity.y = Mathf.Sqrt(jumpHeight * -1.0f * gravityValue);
     }
 }
