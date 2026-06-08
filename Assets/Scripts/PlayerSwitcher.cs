@@ -1,11 +1,15 @@
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using UnityEngine.InputSystem;
 
 public class PlayerSwitcher : MonoBehaviour
 {
     public static PlayerSwitcher Instance;
 
-    [Header("Personnages (Se remplissent tout seuls)")]
+    [Header("Inputs (Nouveau Système)")]
+    public InputActionReference switchPlayerAction;
+
+    [Header("Personnages")]
     public CharacterController3D character1;
     public CharacterController3D character2;
 
@@ -13,36 +17,34 @@ public class PlayerSwitcher : MonoBehaviour
 
     void Awake()
     {
-        // Système de Singleton
         if (Instance == null)
         {
             Instance = this;
             DontDestroyOnLoad(gameObject);
         }
-        else
-        {
-            Destroy(gameObject);
-            return;
-        }
+        else { Destroy(gameObject); return; }
     }
 
-    void Start()
+    void OnEnable()
     {
-        // PUNCHLINE : On force la recherche des joueurs dès le premier démarrage du jeu !
-        InitializePlayers();
+        SceneManager.sceneLoaded += OnSceneLoaded;
+        switchPlayerAction?.action.Enable();
     }
 
-    void OnEnable() { SceneManager.sceneLoaded += OnSceneLoaded; }
-    void OnDisable() { SceneManager.sceneLoaded -= OnSceneLoaded; }
+    void OnDisable()
+    {
+        SceneManager.sceneLoaded -= OnSceneLoaded;
+        switchPlayerAction?.action.Disable();
+    }
+
+    void Start() { InitializePlayers(); }
 
     void OnSceneLoaded(Scene scene, LoadSceneMode mode)
     {
-        if (scene.buildIndex == 0) return; // On ignore le menu principal
-
+        if (scene.buildIndex == 0) return;
         InitializePlayers();
     }
 
-    // Fonction unique pour trouver et activer les personnages
     void InitializePlayers()
     {
         GameObject p1 = GameObject.FindWithTag("Player1");
@@ -53,16 +55,9 @@ public class PlayerSwitcher : MonoBehaviour
             character1 = p1.GetComponent<CharacterController3D>();
             character2 = p2.GetComponent<CharacterController3D>();
 
-            // On définit le personnage 1 comme actif par défaut
             activeCharacter = character1;
             character1.isCurrentPlayer = true;
             character2.isCurrentPlayer = false;
-
-            Debug.Log("Joueurs initialisés avec succès ! Joueur actif : " + activeCharacter.gameObject.name);
-        }
-        else
-        {
-            Debug.LogWarning("PlayerSwitcher : Impossible de trouver 'Player1' ou 'Player2' dans la scène actuelle.");
         }
     }
 
@@ -70,8 +65,7 @@ public class PlayerSwitcher : MonoBehaviour
     {
         if (activeCharacter == null) return;
 
-        // Touche Tab pour switcher de perso
-        if (Input.GetKeyDown(KeyCode.Tab))
+        if (switchPlayerAction.action.WasPressedThisFrame())
         {
             SwitchCharacter();
         }
@@ -93,7 +87,5 @@ public class PlayerSwitcher : MonoBehaviour
             character1.isCurrentPlayer = true;
             activeCharacter = character1;
         }
-
-        Debug.Log("Switch effectué ! Personnage actif : " + activeCharacter.gameObject.name);
     }
 }

@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.InputSystem; // Indispensable pour le nouveau système
 
 [RequireComponent(typeof(CharacterController))]
 public class CharacterController3D : MonoBehaviour
@@ -11,8 +12,11 @@ public class CharacterController3D : MonoBehaviour
     public Camera fpCamera;
     public TPSCameraOrbit tpCameraScript;
 
-    // On garde le FPS par défaut
-    private bool isFirstPersonMode = true;
+    [Header("Inputs (Nouveau Système)")]
+    public InputActionReference moveAction;
+    public InputActionReference lookAction;
+    public InputActionReference jumpAction;
+    public InputActionReference switchCameraAction;
 
     [Header("Mouvement")]
     public float playerSpeed = 7.0f;
@@ -20,7 +24,7 @@ public class CharacterController3D : MonoBehaviour
     public float rotationSpeed = 15.0f;
 
     [Header("Caméra FPS (Sensibilité)")]
-    public float mouseSensitivity = 2.0f;
+    public float mouseSensitivity = 0.1f; // Réduit pour le nouveau système
     private float xRotation = 0f;
 
     [Header("Saut & Double Saut")]
@@ -28,8 +32,12 @@ public class CharacterController3D : MonoBehaviour
     private bool canDoubleJump;
     public bool hasDoubleJumpAbility = true;
 
-    // LE SECRET EST ICI : C'est une "Property". Dès que le PlayerSwitcher 
-    // change cette valeur, le code dans le "set" s'exécute INSTANTANÉMENT.
+    [Header("Grappin")]
+    [HideInInspector] public bool isGrappling = false;
+    [HideInInspector] public Vector3 grappleTarget;
+    private float grappleSpeed;
+    [HideInInspector] public bool isFirstPersonMode = true;
+
     private bool _isCurrentPlayer = false;
     public bool isCurrentPlayer
     {
@@ -37,49 +45,50 @@ public class CharacterController3D : MonoBehaviour
         set
         {
             _isCurrentPlayer = value;
-            if (_isCurrentPlayer)
-            {
-                ActivateCurrentMode(); // Allume LA bonne caméra
-            }
-            else
-            {
-                TurnOffAllCameras();   // Éteint TOUT pour ce perso
-            }
+            if (_isCurrentPlayer) ActivateCurrentMode();
+            else TurnOffAllCameras();
         }
     }
 
-    void Awake()
+    void Awake() { controller = GetComponent<CharacterController>(); }
+
+    // On allume les inputs quand le script s'active
+    void OnEnable()
     {
-        controller = GetComponent<CharacterController>();
+        moveAction?.action.Enable();
+        lookAction?.action.Enable();
+        jumpAction?.action.Enable();
+        switchCameraAction?.action.Enable();
     }
 
     void Update()
     {
-        // Si le perso n'est pas joué, on lui applique juste la gravité
         if (!_isCurrentPlayer)
         {
             ApplyGravityOnly();
             return;
         }
 
-        // --- BASCULE FPS / TPS (F4) ---
-        if (Input.GetKeyDown(KeyCode.F4))
+        // BASCULE CAMÉRA
+        if (switchCameraAction.action.WasPressedThisFrame())
         {
             isFirstPersonMode = !isFirstPersonMode;
-            ActivateCurrentMode(); // Met à jour les caméras instantanément
+            ActivateCurrentMode();
         }
 
-        // --- GESTION DES ROTATIONS ---
+        // Si on est tiré par le grappin, on court-circuite le mouvement normal !
+        if (isGrappling)
+        {
+            HandleRotations(); // On peut toujours regarder autour
+            Vector3 pullDirection = (grappleTarget - transform.position).normalized;
+            controller.Move(pullDirection * grappleSpeed * Time.deltaTime);
+            return;
+        }
+
         HandleRotations();
-
-        // --- GESTION DES DÉPLACEMENTS ---
         HandleMovement();
-
-        // --- GESTION DU SAUT ---
         HandleJump();
     }
-
-    // --- FONCTIONS DE SÉCURITÉ POUR LES CAMÉRAS ---
 
     public void ActivateCurrentMode()
     {
@@ -103,23 +112,26 @@ public class CharacterController3D : MonoBehaviour
         if (tpCameraScript != null) { tpCameraScript.isActive = false; tpCameraScript.gameObject.SetActive(false); }
     }
 
-    // --- FONCTIONS DE GAMEPLAY ---
+
 
     void HandleRotations()
     {
+        // On n'applique la rotation du corps à la souris QUE si on est en FPS !
         if (isFirstPersonMode)
         {
-            float mouseX = Input.GetAxis("Mouse X") * mouseSensitivity;
-            float mouseY = Input.GetAxis("Mouse Y") * mouseSensitivity;
+            // Lecture du mouvement de la souris via l'Input System
+            Vector2 lookInput = lookAction.action.ReadValue<Vector2>();
+            float mouseX = lookInput.x * mouseSensitivity;
+            float mouseY = lookInput.y * mouseSensitivity;
 
-            // Rotation du corps de gauche à droite
+            // Fait pivoter le corps de gauche à droite
             transform.Rotate(Vector3.up * mouseX);
 
-            // Rotation de la TÊTE de haut en bas (c'est ce qu'il manquait !)
+            // Fait pivoter la tête (caméra FPS) de haut en bas
             if (fpCamera != null)
             {
                 xRotation -= mouseY;
-                xRotation = Mathf.Clamp(xRotation, -90f, 90f); // Empêche de se faire un torticolis
+                xRotation = Mathf.Clamp(xRotation, -90f, 90f);
                 fpCamera.transform.localRotation = Quaternion.Euler(xRotation, 0f, 0f);
             }
         }
@@ -134,9 +146,9 @@ public class CharacterController3D : MonoBehaviour
             canDoubleJump = true;
         }
 
-        float moveX = Input.GetAxis("Horizontal");
-        float moveZ = Input.GetAxis("Vertical");
-        Vector3 inputMove = new Vector3(moveX, 0, moveZ).normalized;
+        // Lecture du mouvement (ZQSD/Joystick) via l'Input System
+        Vector2 moveInput = moveAction.action.ReadValue<Vector2>();
+        Vector3 inputMove = new Vector3(moveInput.x, 0, moveInput.y).normalized;
 
         if (inputMove.magnitude >= 0.1f)
         {
@@ -150,8 +162,7 @@ public class CharacterController3D : MonoBehaviour
             {
                 Vector3 camForward = tpCameraScript.transform.forward;
                 Vector3 camRight = tpCameraScript.transform.right;
-                camForward.y = 0f;
-                camRight.y = 0f;
+                camForward.y = 0f; camRight.y = 0f;
 
                 moveDirection = camRight * inputMove.x + camForward * inputMove.z;
 
@@ -166,7 +177,7 @@ public class CharacterController3D : MonoBehaviour
 
     void HandleJump()
     {
-        if (Input.GetButtonDown("Jump"))
+        if (jumpAction.action.WasPressedThisFrame())
         {
             if (groundedPlayer) Jump();
             else if (canDoubleJump && hasDoubleJumpAbility) { Jump(); canDoubleJump = false; }
@@ -176,10 +187,7 @@ public class CharacterController3D : MonoBehaviour
         controller.Move(playerVelocity * Time.deltaTime);
     }
 
-    void Jump()
-    {
-        playerVelocity.y = Mathf.Sqrt(jumpHeight * -2.0f * gravityValue);
-    }
+    void Jump() { playerVelocity.y = Mathf.Sqrt(jumpHeight * -2.0f * gravityValue); }
 
     void ApplyGravityOnly()
     {
@@ -189,5 +197,19 @@ public class CharacterController3D : MonoBehaviour
             controller.Move(playerVelocity * Time.deltaTime);
         }
         else playerVelocity.y = 0f;
+    }
+    public void StartGrapplePull(Vector3 target, float speed)
+    {
+        isGrappling = true;
+        grappleTarget = target;
+        grappleSpeed = speed;
+        playerVelocity.y = 0f; // On annule la gravité
+    }
+
+    public void StopGrapple()
+    {
+        isGrappling = false;
+        // Petit saut vertical à l'arrivée pour bien atterrir sur le rebord
+        playerVelocity.y = Mathf.Sqrt(jumpHeight * -1.0f * gravityValue);
     }
 }
