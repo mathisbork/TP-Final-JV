@@ -5,8 +5,6 @@ using UnityEngine.SceneManagement;
 public class InitScript : MonoBehaviour
 {
     public static InitScript Instance { get; private set; }
-    public GameObject skybox;
-    public GameObject sun;
     public Canvas canvas;
     public EventSystem eventSystem;
 
@@ -27,8 +25,6 @@ public class InitScript : MonoBehaviour
 
     void Start()
     {
-        DontDestroyOnLoad(skybox);
-        DontDestroyOnLoad(sun);
         DontDestroyOnLoad(canvas);
         DontDestroyOnLoad(eventSystem);
         if (SceneManager.GetActiveScene().buildIndex == 0)

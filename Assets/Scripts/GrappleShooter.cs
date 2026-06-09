@@ -64,7 +64,6 @@ public class GrappleShooter : MonoBehaviour
         {
             if (Vector3.Distance(transform.position, characterController.grappleTarget) < 1.5f)
             {
-                characterController.StopGrapple();
                 DestroyHook();
             }
         }
